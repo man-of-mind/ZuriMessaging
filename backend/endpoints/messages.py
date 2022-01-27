@@ -1,5 +1,4 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
-from fastapi_pagination import Page, add_pagination, paginate
 from schema.message import Message, MessageRequest
 from schema.response import ResponseModel
 from starlette.responses import JSONResponse
@@ -9,7 +8,6 @@ from utils.message_utils import (MESSAGE_COLLECTION, get_message,
                                  get_room_messages)
 
 router = APIRouter()
-
 
 
 @router.post(
@@ -188,11 +186,12 @@ async def update_message(
             detail="You are not authorized to edit this message",
         )
 
-    message.update(payload)
-    message["edited"] = True
+    payload["edited"] = True
     edited_message = await DB.update(
-        MESSAGE_COLLECTION, document_id=message_id, data=message
+        MESSAGE_COLLECTION, document_id=message_id, data=payload
     )
+
+    message.update(payload)
 
     if edited_message and edited_message.get("status_code") is None:
         # Publish to centrifugo in the background.
@@ -211,7 +210,7 @@ async def update_message(
 
 @router.get(
     "/org/{org_id}/rooms/{room_id}/messages",
-    response_model=Page[Message],
+    response_model=ResponseModel,
     status_code=status.HTTP_200_OK,
     responses={424: {"detail": "ZC Core failed"}},
 )
@@ -234,7 +233,7 @@ async def get_messages(org_id, room_id):
             status_code=status.HTTP_424_FAILED_DEPENDENCY,
             detail="Zc Core failed",
         )
-    return paginate(response)
-
-
-add_pagination(router)
+    return JSONResponse(
+        content=ResponseModel.success(data=response, message="Messages retrieved"),
+        status_code=status.HTTP_200_OK,
+    )
